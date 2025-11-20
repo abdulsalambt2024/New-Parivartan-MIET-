@@ -1,0 +1,8 @@
+{
+  "name": "New Parivartan MIET ",
+  "description": "A comprehensive community platform featuring social feeds, real-time chat, AI content creation tools, event management, and administrative controls.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
