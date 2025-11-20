@@ -101,7 +101,9 @@ export interface Event {
 export interface Task {
   id: string;
   title: string;
-  assignedTo: string;
+  description?: string;
+  assignedTo: string; // User ID
+  assignedToName?: string; // For display
   status: 'pending' | 'in-progress' | 'completed';
   dueDate: string;
 }
@@ -157,4 +159,14 @@ export interface Suggestion {
     description: string;
     category: 'feature' | 'improvement' | 'bug';
     timestamp: number;
+}
+
+export interface DonationCampaign {
+  id: string;
+  title: string;
+  description: string;
+  targetAmount: number;
+  raisedAmount: number;
+  upiId: string;
+  image?: string;
 }

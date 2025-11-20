@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { storageService } from '../services/storageService';
 import { Loader2, Lock, Mail, ShieldCheck, ArrowRight, Shield, X, Eye, EyeOff } from 'lucide-react';
@@ -27,8 +28,8 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
     setError('');
     setLoading(true);
 
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // Simulate network delay to feel like valid auth process
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     if (isSignUp) {
         setStep('verify-email');
@@ -36,17 +37,23 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
         return;
     }
 
-    // Sign In Flow
-    const { user, isNew } = storageService.authenticate(email);
+    // Sign In Flow - Now async to sync with Supabase DB
+    try {
+        const { user, isNew } = await storageService.authenticate(email);
 
-    if (user.twoFactorEnabled) {
-      setTempUser(user);
-      setStep('2fa');
-      setLoading(false);
-    } else {
-      storageService.setUser(user);
-      onLogin();
-      onClose();
+        if (user.twoFactorEnabled) {
+          setTempUser(user);
+          setStep('2fa');
+          setLoading(false);
+        } else {
+          storageService.setUser(user);
+          onLogin();
+          onClose();
+        }
+    } catch (err) {
+        console.error(err);
+        setError("Authentication failed. Please try again.");
+        setLoading(false);
     }
   };
 
@@ -68,9 +75,9 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
     }
   };
 
-  const handleEmailVerifiedMock = () => {
+  const handleEmailVerifiedMock = async () => {
       // Simulate user clicking email link
-      const { user } = storageService.authenticate(email);
+      const { user } = await storageService.authenticate(email);
       storageService.setUser(user);
       onLogin();
       onClose();
@@ -133,6 +140,8 @@ export const Auth: React.FC<AuthProps> = ({ isOpen, onClose, onLogin }) => {
                     </button>
                 </div>
                 </div>
+
+                {error && <p className="text-red-500 text-xs text-center">{error}</p>}
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center">

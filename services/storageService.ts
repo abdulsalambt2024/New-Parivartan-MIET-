@@ -1,5 +1,5 @@
 
-import { User, UserRole, Post, Event, Slide, AttendanceSession, StartupConfig, ChatMessage, Comment, Notification, Feedback, Suggestion } from '../types';
+import { User, UserRole, Post, Event, Slide, AttendanceSession, StartupConfig, ChatMessage, Comment, Notification, Feedback, Suggestion, Task, DonationCampaign } from '../types';
 import * as OTPAuth from 'otpauth';
 import { supabase } from './supabaseClient';
 
@@ -13,10 +13,10 @@ const mapProfileToUser = (p: any): User => ({
     verified: p.verified,
     bio: p.bio,
     location: p.location,
-    social: p.social,
-    twoFactorEnabled: p.two_factor_enabled,
-    twoFactorSecret: p.two_factor_secret,
-    notificationPreferences: p.notification_preferences || { likes: true, comments: true, mentions: true, system: true },
+    social: p.social || {},
+    twoFactorEnabled: p.two_factor_enabled ?? p.twoFactorEnabled, // Handle both DB (snake) and local (camel) keys
+    twoFactorSecret: p.two_factor_secret ?? p.twoFactorSecret,
+    notificationPreferences: p.notification_preferences || p.notificationPreferences || { likes: true, comments: true, mentions: true, system: true },
     badges: p.badges // Note: Badges logic needs separate implementation in DB or computed
 });
 
@@ -39,7 +39,7 @@ const SUPER_ADMIN_EMAILS = ['abdul.salam.bt.2024@miet.ac.in', 'hayatamr9608@gmai
 const SESSION_KEY = 'parivartan_user';
 
 export const storageService = {
-  // --- AUTH & USER (Synchronous for UI Compatibility) ---
+  // --- AUTH & USER (Synchronous for UI Session) ---
   getUser: (): User | null => {
       const u = localStorage.getItem(SESSION_KEY);
       return u ? JSON.parse(u) : null;
@@ -53,51 +53,61 @@ export const storageService = {
       localStorage.removeItem(SESSION_KEY);
   },
 
-  authenticate: (email: string): { user: User, isNew: boolean } => {
-      // Mock auth logic for UI components that use synchronous auth
-      // Real auth should use supabase.auth.signInWithOtp etc.
+  // Modified Authenticate to Sync with Supabase
+  authenticate: async (email: string): Promise<{ user: User, isNew: boolean }> => {
+      const id = email.replace(/[@.]/g, '_');
       const isSuper = SUPER_ADMIN_EMAILS.includes(email);
-      const user: User = {
-          id: email.replace(/[@.]/g, '_'),
-          email,
-          name: email.split('@')[0],
-          role: isSuper ? UserRole.SUPER_ADMIN : UserRole.MEMBER,
-          avatar: `https://ui-avatars.com/api/?name=${email}&background=random`,
-          verified: false,
-          notificationPreferences: { likes: true, comments: true, mentions: true, system: true }
-      };
-      // Check if we can restore from session if matches? 
-      // For now, return constructed user.
-      return { user, isNew: true };
+      
+      let profile = null;
+      let isNew = false;
+
+      try {
+          // Try to fetch user from Supabase
+          const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
+          
+          if (!error && data) {
+              profile = data;
+          }
+      } catch (e) {
+          console.warn("Supabase fetch error (possibly offline):", e);
+      }
+
+      if (!profile) {
+          isNew = true;
+          const newUser = {
+              id,
+              email,
+              name: email.split('@')[0],
+              role: isSuper ? UserRole.SUPER_ADMIN : UserRole.MEMBER,
+              avatar: `https://ui-avatars.com/api/?name=${email}&background=random`,
+              verified: false,
+              social: {},
+              notification_preferences: { likes: true, comments: true, mentions: true, system: true }
+          };
+          
+          try {
+            // Upsert to Supabase to ensure ID exists for FKs
+            const { error } = await supabase.from('profiles').upsert(newUser);
+            
+            if (error) {
+                console.error("Error creating profile in DB:", JSON.stringify(error));
+                // If RLS blocks insert, we still proceed with local session so user isn't blocked.
+            }
+            
+            // Use newUser as profile
+            profile = newUser;
+          } catch (e) {
+            console.error("Supabase upsert exception:", e);
+            profile = newUser;
+          }
+      }
+
+      const user = mapProfileToUser(profile);
+      
+      return { user, isNew };
   },
 
-  // --- SUPABASE AUTH (Async) ---
-  getCurrentUser: async (): Promise<User | null> => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return null;
-    
-    let { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-    
-    // Fallback if trigger hasn't run yet (rare but possible)
-    if (!profile && user.email) {
-        const isSuper = SUPER_ADMIN_EMAILS.includes(user.email);
-        const { data: newProfile } = await supabase.from('profiles').upsert({
-            id: user.id,
-            email: user.email,
-            name: user.user_metadata?.name || user.email.split('@')[0],
-            role: isSuper ? 'SUPER_ADMIN' : 'USER',
-            avatar: `https://ui-avatars.com/api/?name=${user.email}&background=random`
-        }).select().single();
-        profile = newProfile;
-    }
-        
-    return profile ? mapProfileToUser(profile) : null;
-  },
-
+  // --- SUPABASE USER OPERATIONS ---
   getAllUsers: async (): Promise<User[]> => {
     const { data } = await supabase.from('profiles').select('*');
     return (data || []).map(mapProfileToUser);
@@ -117,6 +127,11 @@ export const storageService = {
       if (updates.notificationPreferences !== undefined) dbUpdates.notification_preferences = updates.notificationPreferences;
 
       const { data } = await supabase.from('profiles').update(dbUpdates).eq('id', userId).select().single();
+      // Update local session if it matches
+      const currentUser = storageService.getUser();
+      if (currentUser && currentUser.id === userId && data) {
+          storageService.setUser(mapProfileToUser(data));
+      }
       return data ? mapProfileToUser(data) : null;
   },
 
@@ -140,12 +155,10 @@ export const storageService = {
         let images: string[] = [];
         if (p.image) {
             try {
-                // Try parsing as JSON array first
                 const parsed = JSON.parse(p.image);
                 if (Array.isArray(parsed)) images = parsed;
                 else images = [p.image];
             } catch (e) {
-                // If parse fails, assume it's a single string URL
                 if (p.image) images = [p.image];
             }
         }
@@ -158,7 +171,7 @@ export const storageService = {
             type: p.type,
             content: p.content,
             images: images, 
-            image: images[0], // Backwards compat for single image view
+            image: images[0],
             likes: p.likes_count,
             timestamp: new Date(p.created_at).getTime(),
             comments: (p.comments || []).map((c: any) => ({
@@ -173,7 +186,6 @@ export const storageService = {
   },
   
   savePost: async (post: Partial<Post>) => {
-    // If array, stringify it. If string, use as is.
     const imagePayload = post.images && post.images.length > 0 
         ? JSON.stringify(post.images) 
         : (post.image ? post.image : null);
@@ -220,23 +232,141 @@ export const storageService = {
   },
   
   saveEvent: async (event: Event) => {
-      await supabase.from('events').insert({
+      // If ID exists and not new, update, else insert. Simple check:
+      const { data } = await supabase.from('events').select('id').eq('id', event.id || '').single();
+      
+      if (data) {
+         await supabase.from('events').update({
+            title: event.title,
+            date: event.date,
+            description: event.description,
+            location: event.location,
+            image: event.image,
+         }).eq('id', event.id);
+      } else {
+         await supabase.from('events').insert({
+            // Let Supabase gen ID if undefined, or use passed ID
+            title: event.title,
+            date: event.date,
+            description: event.description,
+            location: event.location,
+            image: event.image,
+         });
+      }
+  },
+
+  updateEvent: async (event: Event) => {
+      await supabase.from('events').update({
           title: event.title,
           date: event.date,
           description: event.description,
           location: event.location,
           image: event.image,
-      });
+      }).eq('id', event.id);
+  },
+
+  deleteEvent: async (id: string) => {
+      await supabase.from('events').delete().eq('id', id);
+  },
+
+  // --- TASKS ---
+  getTasks: async (): Promise<Task[]> => {
+      const { data } = await supabase.from('tasks').select('*, profiles(name)');
+      return (data || []).map((t: any) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          assignedTo: t.assigned_to,
+          assignedToName: t.profiles?.name,
+          status: t.status,
+          dueDate: t.due_date
+      }));
+  },
+  
+  saveTask: async (task: Task) => {
+      const { data } = await supabase.from('tasks').select('id').eq('id', task.id).single();
+      const payload = {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          assigned_to: task.assignedTo,
+          status: task.status,
+          due_date: task.dueDate
+      };
+      
+      if (data) {
+          await supabase.from('tasks').update(payload).eq('id', task.id);
+      } else {
+          await supabase.from('tasks').insert(payload);
+      }
+  },
+
+  deleteTask: async (id: string) => {
+      await supabase.from('tasks').delete().eq('id', id);
+  },
+
+  // --- CAMPAIGNS ---
+  getCampaigns: async (): Promise<DonationCampaign[]> => {
+      const { data } = await supabase.from('campaigns').select('*');
+      return (data || []).map((c: any) => ({
+          id: c.id,
+          title: c.title,
+          description: c.description,
+          targetAmount: Number(c.target_amount),
+          raisedAmount: Number(c.raised_amount),
+          upiId: c.upi_id,
+          image: c.image
+      }));
+  },
+
+  saveCampaign: async (campaign: DonationCampaign) => {
+      const { data } = await supabase.from('campaigns').select('id').eq('id', campaign.id).single();
+      const payload = {
+          id: campaign.id,
+          title: campaign.title,
+          description: campaign.description,
+          target_amount: campaign.targetAmount,
+          raised_amount: campaign.raisedAmount,
+          upi_id: campaign.upiId,
+          image: campaign.image
+      };
+
+      if (data) {
+          await supabase.from('campaigns').update(payload).eq('id', campaign.id);
+      } else {
+          await supabase.from('campaigns').insert(payload);
+      }
+  },
+
+  deleteCampaign: async (id: string) => {
+      await supabase.from('campaigns').delete().eq('id', id);
   },
 
   // --- SLIDES ---
-  getSlides: (): Slide[] => {
-    try {
-        const s = localStorage.getItem('parivartan_slides');
-        return s ? JSON.parse(s) : INITIAL_SLIDES;
-    } catch { return INITIAL_SLIDES; }
+  getSlides: async (): Promise<Slide[]> => {
+    const { data } = await supabase.from('slides').select('*').order('created_at', { ascending: true });
+    if (!data || data.length === 0) return INITIAL_SLIDES;
+    return data.map((s: any) => ({
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        image: s.image
+    }));
   },
-  saveSlides: (slides: Slide[]) => localStorage.setItem('parivartan_slides', JSON.stringify(slides)),
+
+  saveSlides: async (slides: Slide[]) => {
+      // Full refresh logic: delete all and insert new (simple for carousel)
+      // Or upsert. For simplicity, we'll just upsert each.
+      for (const slide of slides) {
+          const { data } = await supabase.from('slides').select('id').eq('id', slide.id).single();
+          if (data) {
+              await supabase.from('slides').update(slide).eq('id', slide.id);
+          } else {
+              await supabase.from('slides').insert(slide);
+          }
+      }
+      // Handle deletions if needed (not implemented for simple upsert loop, but okay for demo)
+  },
 
   // --- ATTENDANCE ---
   getAttendanceSessions: async (): Promise<AttendanceSession[]> => {
@@ -298,7 +428,7 @@ export const storageService = {
   // --- FEEDBACK ---
   saveFeedback: async (feedback: Feedback) => {
       await supabase.from('feedback').insert({
-          user_id: feedback.userId || null,
+          user_id: feedback.userId === 'anonymous' ? null : feedback.userId,
           rating: feedback.rating,
           comment: feedback.comment
       });
@@ -306,7 +436,7 @@ export const storageService = {
 
   saveSuggestion: async (suggestion: Suggestion) => {
       await supabase.from('suggestions').insert({
-          user_id: suggestion.userId || null,
+          user_id: suggestion.userId === 'anonymous' ? null : suggestion.userId,
           title: suggestion.title,
           description: suggestion.description,
           category: suggestion.category
@@ -314,13 +444,20 @@ export const storageService = {
   },
 
   // --- CONFIG ---
-  getStartupConfig: (): StartupConfig => {
-      try {
-          const c = localStorage.getItem('parivartan_startup_msg');
-          return c ? JSON.parse(c) : { enabled: true, title: "Welcome to PARIVARTAN", message: "Together we can make a difference." };
-      } catch { return { enabled: true, title: "Welcome to PARIVARTAN", message: "" }; }
+  getStartupConfig: async (): Promise<StartupConfig> => {
+      const { data } = await supabase.from('system_config').select('value').eq('key', 'startup_popup').single();
+      if (data) return data.value;
+      return { enabled: true, title: "Welcome to PARIVARTAN", message: "Together we can make a difference." };
   },
-  saveStartupConfig: (config: StartupConfig) => localStorage.setItem('parivartan_startup_msg', JSON.stringify(config)),
+  
+  saveStartupConfig: async (config: StartupConfig) => {
+      const { data } = await supabase.from('system_config').select('key').eq('key', 'startup_popup').single();
+      if (data) {
+          await supabase.from('system_config').update({ value: config }).eq('key', 'startup_popup');
+      } else {
+          await supabase.from('system_config').insert({ key: 'startup_popup', value: config });
+      }
+  },
 
   // --- CHAT ---
   getChatMessages: async (chatId: string): Promise<ChatMessage[]> => {
@@ -341,6 +478,7 @@ export const storageService = {
 
   saveChatMessage: async (chatId: string, message: Partial<ChatMessage>) => {
       await supabase.from('chat_messages').insert({
+          id: message.id,
           chat_id: chatId,
           sender_id: message.senderId,
           text: message.text,

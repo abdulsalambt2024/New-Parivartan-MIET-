@@ -1,11 +1,10 @@
-
 import React, { useState } from 'react';
 import { MessageSquarePlus, Star, Send, Lightbulb } from 'lucide-react';
 import { storageService } from '../services/storageService';
 import { User } from '../types';
 
 interface FeedbackPanelProps {
-    user: User;
+    user?: User | null;
 }
 
 export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ user }) => {
@@ -18,13 +17,15 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ user }) => {
     const [feedbackComment, setFeedbackComment] = useState('');
     const [submitted, setSubmitted] = useState(false);
 
+    const userId = user?.id || 'anonymous';
+
     const submitSuggestion = (e: React.FormEvent) => {
         e.preventDefault();
         if (!title.trim() || !description.trim()) return;
 
         storageService.saveSuggestion({
             id: Date.now().toString(),
-            userId: user.id,
+            userId: userId,
             title,
             description,
             category,
@@ -43,7 +44,7 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ user }) => {
 
         storageService.saveFeedback({
             id: Date.now().toString(),
-            userId: user.id,
+            userId: userId,
             rating,
             comment: feedbackComment,
             timestamp: Date.now()
@@ -89,7 +90,7 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ user }) => {
                                     <input 
                                         value={title}
                                         onChange={(e) => setTitle(e.target.value)}
-                                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-primary outline-none"
+                                        className="w-full border border-gray-300 rounded-lg p-2 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-primary outline-none"
                                         placeholder="e.g., Dark Mode Support"
                                         required
                                     />
@@ -99,7 +100,7 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ user }) => {
                                     <select 
                                         value={category}
                                         onChange={(e) => setCategory(e.target.value as any)}
-                                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-primary outline-none"
+                                        className="w-full border border-gray-300 rounded-lg p-2 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-primary outline-none"
                                     >
                                         <option value="feature">New Feature</option>
                                         <option value="improvement">Improvement</option>
@@ -111,7 +112,7 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ user }) => {
                                     <textarea 
                                         value={description}
                                         onChange={(e) => setDescription(e.target.value)}
-                                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-primary outline-none h-32 resize-none"
+                                        className="w-full border border-gray-300 rounded-lg p-2 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-primary outline-none h-32 resize-none"
                                         placeholder="Describe the feature or issue..."
                                         required
                                     />
@@ -142,7 +143,7 @@ export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({ user }) => {
                                     <textarea 
                                         value={feedbackComment}
                                         onChange={(e) => setFeedbackComment(e.target.value)}
-                                        className="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-primary outline-none h-32 resize-none"
+                                        className="w-full border border-gray-300 rounded-lg p-2 bg-gray-50 text-gray-900 focus:ring-2 focus:ring-primary outline-none h-32 resize-none"
                                         placeholder="Tell us what you think..."
                                         required
                                     />

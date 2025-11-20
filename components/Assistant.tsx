@@ -1,4 +1,5 @@
 
+
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Loader2, Bot, Mic, Volume2, VolumeX } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
@@ -97,14 +98,14 @@ export const Assistant: React.FC = () => {
     <>
       <button 
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-20 right-4 md:bottom-6 md:right-6 w-14 h-14 bg-black text-white rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-110 z-40 ${isOpen ? 'scale-0' : 'scale-100'}`}
+        className={`fixed bottom-32 right-4 md:bottom-20 md:right-6 w-14 h-14 bg-black text-white rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-110 z-40 ${isOpen ? 'scale-0' : 'scale-100'}`}
         title="AI Assistant"
       >
         <Bot size={28} />
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-20 right-4 md:bottom-6 md:right-6 w-full max-w-sm h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-50 animate-fade-in-up overflow-hidden">
+        <div className="fixed bottom-32 right-4 md:bottom-20 md:right-6 w-full max-w-sm h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-50 animate-fade-in-up overflow-hidden">
           {/* Header */}
           <div className="p-4 bg-gray-900 text-white flex justify-between items-center">
             <div className="flex items-center gap-2">

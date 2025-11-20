@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { storageService } from '../services/storageService';
 import { UserRole, User, AttendanceSession, AttendanceEntry } from '../types';
@@ -97,8 +98,8 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
   const toggleStatus = (userId: string, status: 'present' | 'absent') => {
       if (!currentSession) return;
       
-      // Permission: Only Admin/Super Admin can edit
-      if (currentUser.role === UserRole.MEMBER) return;
+      // Permission: All authorized users can edit drafts
+      if (currentUser.role === UserRole.USER) return;
       // Permission: If submitted, only Super Admin can edit
       if (currentSession.submitted && currentUser.role !== UserRole.SUPER_ADMIN) return;
 
@@ -125,7 +126,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
 
   const canEdit = () => {
       if (!currentSession) return false;
-      if (currentUser.role === UserRole.MEMBER) return false;
+      if (currentUser.role === UserRole.USER) return false;
       if (currentSession.submitted && currentUser.role !== UserRole.SUPER_ADMIN) return false;
       return true;
   };
@@ -286,7 +287,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
                         
                         {!canEdit() && (
                             <div className="mt-4 p-4 bg-blue-50 text-blue-800 text-sm rounded-lg flex items-center gap-2">
-                                <Lock size={16} /> Attendance is managed by Admins.
+                                <Lock size={16} /> Attendance is managed by Authorized Members.
                             </div>
                         )}
                     </div>
