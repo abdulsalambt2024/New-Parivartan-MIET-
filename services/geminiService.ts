@@ -1,10 +1,23 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 
 const apiKey = process.env.API_KEY || ''; 
-const ai = new GoogleGenAI({ apiKey });
+let ai: GoogleGenAI | null = null;
+
+try {
+    if (apiKey) {
+        ai = new GoogleGenAI({ apiKey });
+    }
+} catch (error) {
+    console.error("Failed to initialize GoogleGenAI", error);
+}
 
 export const geminiService = {
   generateImage: async (prompt: string): Promise<string> => {
+    if (!ai) {
+        console.warn("API Key missing for Image Generation");
+        return `https://picsum.photos/800/600?random=${Date.now()}`;
+    }
     try {
       // Using imagen-4.0-generate-001 for high quality image generation
       const response = await ai.models.generateImages({
@@ -24,14 +37,14 @@ export const geminiService = {
       throw new Error("No image generated");
     } catch (error) {
       console.error("Error generating image:", error);
-      // Fallback to simulated image via Picsum if API fails or key is invalid (for demo reliability)
+      // Fallback to simulated image via Picsum if API fails or key is invalid
       return `https://picsum.photos/800/600?random=${Date.now()}`;
     }
   },
 
   generateCaption: async (base64Image: string): Promise<string> => {
+    if (!ai) return "AI service unavailable.";
     try {
-        // Remove data URL prefix if present
         const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
         
         const response = await ai.models.generateContent({
@@ -41,7 +54,7 @@ export const geminiService = {
                     {
                         inlineData: {
                             data: base64Data,
-                            mimeType: 'image/jpeg', // Assuming jpeg for simplicity in this demo
+                            mimeType: 'image/jpeg', 
                         },
                     },
                     {
@@ -58,7 +71,7 @@ export const geminiService = {
   },
   
   editImage: async (base64Image: string, instructions: string): Promise<string> => {
-      // Using gemini-2.5-flash-image for image editing/modification tasks
+      if (!ai) return base64Image;
       try {
         const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
         const response = await ai.models.generateContent({
@@ -81,7 +94,6 @@ export const geminiService = {
             },
         });
 
-        // Extract image from response parts
         for (const part of response.candidates?.[0]?.content?.parts || []) {
             if (part.inlineData) {
                 const base64ImageBytes = part.inlineData.data;
@@ -96,12 +108,14 @@ export const geminiService = {
   },
 
   chat: async (message: string, history: {role: 'user' | 'model', parts: [{text: string}]}[] = []): Promise<string> => {
+    if (!ai) return "I am unable to connect to the AI service. Please check your API Key configuration.";
+    
     try {
       const chat = ai.chats.create({
         model: 'gemini-2.5-flash',
         history: history,
         config: {
-            systemInstruction: "You are a helpful and friendly community assistant for the Community Nexus app."
+            systemInstruction: "You are a helpful, friendly, and knowledgeable community assistant for the Parivartan app. Keep responses concise and relevant to community activities, events, and general support."
         }
       });
       
@@ -109,11 +123,12 @@ export const geminiService = {
       return result.text || "I'm sorry, I didn't understand that.";
     } catch (error) {
       console.error("Chat error:", error);
-      return "Sorry, I am having trouble connecting to the AI service right now.";
+      return "Sorry, I am having trouble connecting to the AI service right now. Please try again later.";
     }
   },
 
   validateContent: async (text: string): Promise<{isSafe: boolean, reason?: string}> => {
+    if (!ai) return { isSafe: true }; // Fail open if no AI
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -129,7 +144,6 @@ export const geminiService = {
         return { isSafe: result.isSafe ?? true, reason: result.reason };
     } catch (error) {
         console.error("Safety check failed", error);
-        // Fail open but log error
         return { isSafe: true };
     }
   }

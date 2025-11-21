@@ -1,21 +1,39 @@
 
-
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Loader2, Bot, Mic, Volume2, VolumeX } from 'lucide-react';
+import { MessageSquare, X, Send, Loader2, Bot, Mic, Volume2, VolumeX, Trash2 } from 'lucide-react';
 import { geminiService } from '../services/geminiService';
+
+const CHAT_STORAGE_KEY = 'parivartan_ai_chat_history';
 
 export const Assistant: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([
-    { role: 'model', text: 'Hi! I am your community assistant. How can I help you today?' }
-  ]);
+  const [messages, setMessages] = useState<{role: 'user' | 'model', text: string}[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // Load history from LocalStorage on mount
   useEffect(() => {
+    const saved = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (saved) {
+      try {
+        setMessages(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse chat history", e);
+        setMessages([{ role: 'model', text: 'Hi! I am your community assistant. How can I help you today?' }]);
+      }
+    } else {
+      setMessages([{ role: 'model', text: 'Hi! I am your community assistant. How can I help you today?' }]);
+    }
+  }, []);
+
+  // Save history to LocalStorage whenever messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(messages));
+    }
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
 
@@ -32,22 +50,35 @@ export const Assistant: React.FC = () => {
       }
   };
 
+  const handleClearChat = () => {
+    if (window.confirm("Are you sure you want to clear the chat history?")) {
+      const defaultMsg: {role: 'model', text: string}[] = [{ role: 'model', text: 'Chat cleared. How can I help you now?' }];
+      setMessages(defaultMsg);
+      localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(defaultMsg));
+      stopSpeaking();
+    }
+  };
+
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!input.trim()) return;
 
     const userMsg = input;
     setInput('');
+    
+    // Optimistically add user message
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setLoading(true);
 
-    // Format history for Gemini
+    // Format history for Gemini (exclude the message we just added optimistically if we were using state, 
+    // but here 'messages' is stale inside this closure so it represents history perfectly)
     const history = messages.map(m => ({
         role: m.role,
         parts: [{ text: m.text }]
     }));
 
     const response = await geminiService.chat(userMsg, history);
+    
     setMessages(prev => [...prev, { role: 'model', text: response }]);
     setLoading(false);
 
@@ -60,7 +91,9 @@ export const Assistant: React.FC = () => {
       if ('speechSynthesis' in window) {
           // Cancel any previous speech
           window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
+          // Strip markdown asterisks for cleaner speech
+          const cleanText = text.replace(/\*/g, '');
+          const utterance = new SpeechSynthesisUtterance(cleanText);
           window.speechSynthesis.speak(utterance);
       }
   };
@@ -113,11 +146,14 @@ export const Assistant: React.FC = () => {
               <span className="font-semibold">AI Assistant</span>
             </div>
             <div className="flex items-center gap-3">
+                <button onClick={handleClearChat} className="text-gray-300 hover:text-white" title="Clear History">
+                    <Trash2 size={18} />
+                </button>
                 <button onClick={toggleMute} className="text-gray-300 hover:text-white" title={isMuted ? "Unmute" : "Mute"}>
                     {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
                 </button>
                 <button onClick={() => setIsOpen(false)} className="text-gray-300 hover:text-white">
-                <X size={20} />
+                    <X size={20} />
                 </button>
             </div>
           </div>
@@ -127,7 +163,8 @@ export const Assistant: React.FC = () => {
             {messages.map((m, idx) => (
               <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] p-3 rounded-xl text-sm relative group ${m.role === 'user' ? 'bg-primary text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none shadow-sm'}`}>
-                  {m.text}
+                  {/* Render with simple whitespace handling */}
+                  <p className="whitespace-pre-wrap">{m.text}</p>
                 </div>
               </div>
             ))}
@@ -147,6 +184,7 @@ export const Assistant: React.FC = () => {
                 type="button"
                 onClick={startListening}
                 className={`p-2 rounded-full transition ${isListening ? 'bg-red-100 text-red-600 animate-pulse' : 'text-gray-500 hover:bg-gray-100'}`}
+                title="Voice Input"
             >
                 <Mic size={20} />
             </button>
