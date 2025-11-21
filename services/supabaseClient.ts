@@ -10,8 +10,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 === SUPABASE SQL SCHEMA SETUP ===
 
 Run this in your Supabase SQL Editor to create the necessary tables.
-IMPORTANT: If RLS (Row Level Security) is enabled, you must add policies to allow access.
-For this demo, you can disable RLS on tables or add a permissive policy:
+
+IMPORTANT FIX: If you see an error about 'notification_preferences' missing, run this:
+   
+   alter table profiles add column if not exists notification_preferences jsonb;
+
+--- Full Schema Below ---
 
 -- Disable RLS (Simplest for prototyping)
 alter table profiles disable row level security;

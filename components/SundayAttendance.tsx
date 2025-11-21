@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { storageService } from '../services/storageService';
 import { UserRole, User, AttendanceSession, AttendanceEntry } from '../types';
@@ -31,8 +30,14 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
       setSessions(sess);
       
       const allUsers = await storageService.getAllUsers();
-      // Filter authorized users (Members, Admins, Super Admins)
-      const authUsers = allUsers.filter(u => u.role !== UserRole.USER);
+      // Explicitly whitelist authorized roles and sort by hierarchy
+      const authUsers = allUsers
+        .filter(u => [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MEMBER].includes(u.role))
+        .sort((a, b) => {
+            const roleOrder = { [UserRole.SUPER_ADMIN]: 0, [UserRole.ADMIN]: 1, [UserRole.MEMBER]: 2, [UserRole.USER]: 3 };
+            return (roleOrder[a.role] || 3) - (roleOrder[b.role] || 3);
+        });
+      
       setAuthorizedUsers(authUsers);
 
       // Calculate Badges for display
@@ -246,7 +251,7 @@ export const SundayAttendance: React.FC<Props> = ({ currentUser }) => {
 
                         <div className="bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
                             <div className="grid grid-cols-12 bg-gray-100 p-3 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                                <div className="col-span-6">Member</div>
+                                <div className="col-span-6">Authorized Personnel</div>
                                 <div className="col-span-6 text-center">Attendance</div>
                             </div>
                             <div className="divide-y divide-gray-200">

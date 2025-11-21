@@ -136,13 +136,19 @@ const AdminPanel = ({ currentUser }: { currentUser: User }) => {
 
     if (loading) return <div className="p-12 text-center">Loading Admin Panel...</div>;
 
+    // Sort users by hierarchy: Super Admin -> Admin -> Member -> User
+    const sortedUsers = [...users].sort((a, b) => {
+        const priority = { [UserRole.SUPER_ADMIN]: 0, [UserRole.ADMIN]: 1, [UserRole.MEMBER]: 2, [UserRole.USER]: 3 };
+        return (priority[a.role] || 3) - (priority[b.role] || 3);
+    });
+
     return (
         <div className="max-w-5xl mx-auto py-8 px-4">
             {/* Role Management (Super Admin Only) */}
             {currentUser.role === UserRole.SUPER_ADMIN && (
                 <div className="mb-10">
                     <h2 className="text-2xl font-bold mb-6 text-gray-900 flex items-center gap-2">
-                        <UserCog className="text-primary" /> Member Management
+                        <UserCog className="text-primary" /> User & Role Management
                     </h2>
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         <table className="w-full text-left">
@@ -155,7 +161,7 @@ const AdminPanel = ({ currentUser }: { currentUser: User }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {users.map(u => (
+                                {sortedUsers.map(u => (
                                     <tr key={u.id} className="hover:bg-gray-50">
                                         <td className="p-4 flex items-center gap-3">
                                             <img src={u.avatar} className="w-8 h-8 rounded-full" />
@@ -174,14 +180,13 @@ const AdminPanel = ({ currentUser }: { currentUser: User }) => {
                                             <select 
                                                 value={u.role} 
                                                 onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole)}
-                                                className="text-sm border rounded p-1"
+                                                className="text-sm border rounded p-1 cursor-pointer bg-white"
                                                 disabled={u.email === 'abdul.salam.bt.2024@miet.ac.in' || u.email === 'hayatamr9608@gmail.com'}
                                             >
                                                 <option value={UserRole.USER}>User</option>
                                                 <option value={UserRole.MEMBER}>Member</option>
                                                 <option value={UserRole.ADMIN}>Admin</option>
-                                                {/* Super Admins are fixed by email usually, but listed here */}
-                                                <option value={UserRole.SUPER_ADMIN} disabled>Super Admin</option>
+                                                <option value={UserRole.SUPER_ADMIN}>Super Admin</option>
                                             </select>
                                         </td>
                                     </tr>

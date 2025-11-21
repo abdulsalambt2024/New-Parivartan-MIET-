@@ -8,7 +8,8 @@ const mapProfileToUser = (p: any): User => ({
     id: p.id,
     name: p.name || p.email?.split('@')[0] || 'User',
     email: p.email,
-    role: p.role as UserRole,
+    // Ensure role is uppercase to match Enum (SUPER_ADMIN vs super_admin)
+    role: ((p.role || 'USER').toUpperCase()) as UserRole,
     avatar: p.avatar,
     verified: p.verified,
     bio: p.bio,
@@ -91,7 +92,13 @@ export const storageService = {
             
             if (error) {
                 console.error("Error creating profile in DB:", JSON.stringify(error));
-                // If RLS blocks insert, we still proceed with local session so user isn't blocked.
+                
+                // FALLBACK: If error implies missing column (PGRST204), try inserting without notification_preferences
+                if (error.code === 'PGRST204' || error.message?.includes('notification_preferences')) {
+                     console.warn("Attempting fallback profile creation without notification_preferences...");
+                     const { notification_preferences, ...fallbackUser } = newUser;
+                     await supabase.from('profiles').upsert(fallbackUser);
+                }
             }
             
             // Use newUser as profile
@@ -126,7 +133,14 @@ export const storageService = {
       if (updates.twoFactorSecret !== undefined) dbUpdates.two_factor_secret = updates.twoFactorSecret;
       if (updates.notificationPreferences !== undefined) dbUpdates.notification_preferences = updates.notificationPreferences;
 
-      const { data } = await supabase.from('profiles').update(dbUpdates).eq('id', userId).select().single();
+      const { data, error } = await supabase.from('profiles').update(dbUpdates).eq('id', userId).select().single();
+      
+      if (error) {
+          console.error("Error updating profile:", error);
+          // Fallback for missing columns during update could be added here, but usually update skips undefined keys.
+          // If specific column missing error occurs, we just return null or throw.
+      }
+
       // Update local session if it matches
       const currentUser = storageService.getUser();
       if (currentUser && currentUser.id === userId && data) {

@@ -163,6 +163,14 @@ export const EventManager: React.FC<EventManagerProps> = ({ currentUser, default
       setShowModal(true);
   };
 
+  // Sorted authorized users for assignment
+  const authorizedPersonnel = users
+    .filter(u => [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MEMBER].includes(u.role))
+    .sort((a, b) => {
+         const roleOrder = { [UserRole.SUPER_ADMIN]: 0, [UserRole.ADMIN]: 1, [UserRole.MEMBER]: 2, [UserRole.USER]: 3 };
+         return (roleOrder[a.role] || 3) - (roleOrder[b.role] || 3);
+    });
+
   return (
     <div className="max-w-5xl mx-auto py-8 px-4 relative">
        <div className="flex flex-wrap gap-4 mb-8 justify-center">
@@ -330,7 +338,7 @@ export const EventManager: React.FC<EventManagerProps> = ({ currentUser, default
                                <div className="grid grid-cols-2 gap-4">
                                    <select required className="w-full border p-2 rounded" value={editingItem.assignedTo || ''} onChange={e => setEditingItem({...editingItem, assignedTo: e.target.value})}>
                                        <option value="">Assign To...</option>
-                                       {users.filter(u => u.role !== UserRole.USER).map(u => (
+                                       {authorizedPersonnel.map(u => (
                                            <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                                        ))}
                                    </select>
